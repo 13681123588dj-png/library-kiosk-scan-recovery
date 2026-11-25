@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Library self-borrowing kiosk</title>
+<style>
+*{box-sizing:border-box}body{margin:0;color:#16342f;background:#f5f4ec;font:17px/1.52 'Segoe UI',Arial,sans-serif}
+main{max-width:770px;margin:auto;padding:clamp(14px,4vw,36px)}header{border-bottom:2px solid #29584e;padding-bottom:12px}h1{font:normal clamp(26px,5vw,42px)/1.15 Georgia,serif;margin:4px 0}
+.demo{margin:18px 0;color:#324c45}.demo label{font-weight:650}select{font:inherit;border:1px solid #536d64;padding:6px;background:white;max-width:100%}small{display:block;margin-top:4px;font-size:14px}
+section{padding:clamp(16px,4vw,32px);background:white;border:1px solid #abc0b8;border-left:5px solid #306757;border-radius:5px}
+h2{margin:0 0 12px;font:normal clamp(25px,4vw,35px)/1.15 Georgia,serif}p{margin:8px 0 24px}button{border:1px solid #2b5b4d;background:white;color:#213d34;border-radius:5px;font:600 16px/1.25 'Segoe UI',Arial,sans-serif;min-height:45px;padding:12px 16px;cursor:pointer}
+button:first-child{background:#205044;color:white}#actions{display:flex;flex-wrap:wrap;gap:9px}button:focus-visible,select:focus-visible,h2:focus-visible{outline:3px solid #aa5c14;outline-offset:3px}
+</style></head><body><main><header><h1>Library self-borrowing kiosk</h1></header>
+<div class="demo"><label for="scenario">Demo scenario</label> <select id="scenario"><option value="recover">One missed scan</option><option value="repeat">Repeated missed scans</option><option value="clear">Clear barcode</option></select><small>Changing the scenario starts a new session. Scanner and borrowing are simulated.</small></div>
+<section aria-labelledby="screen-title"><h2 id="screen-title" tabindex="-1"></h2><p id="message" role="status"></p><div id="actions"></div></section></main>
+<script>
+const scenarios = {
+  recover: { name: 'One missed scan', outcomes: ['miss', 'read'] },
+  repeat: { name: 'Repeated missed scans', outcomes: ['miss'] },
+  clear: { name: 'Clear barcode', outcomes: ['read'] }
+};
+
+function startSession(scenario = 'recover') {
+  return { scenario, screen: 'ready', attempts: 0, misses: 0 };
+}
+
+function update(state, action) {
+  if (action === 'end') return startSession(state.scenario);
+  if (action === 'staff' && state.screen === 'miss') {
+    return { ...state, screen: 'staff' };
+  }
+  if (action === 'back' && state.screen === 'staff') {
+    return { ...state, screen: 'miss' };
+  }
+  if (action !== 'scan' || !['ready', 'miss'].includes(state.screen)) return state;
+  const outcomes = scenarios[state.scenario].outcomes;
+  const outcome = outcomes[Math.min(state.attempts, outcomes.length - 1)];
+  const read = outcome === 'read';
+  return {
+    ...state, screen: read ? 'success' : 'miss',
+    attempts: state.attempts + 1, misses: read ? 0 : state.misses + 1
+  };
+}
+
+function display(state) {
+  if (state.screen === 'ready') return {
+    title: 'Scan your book', detail: 'Place the library barcode under the scanner.',
+    buttons: [['scan', 'Scan book']]
+  };
+  if (state.screen === 'success') return {
+    title: 'Book recorded in this demo', detail: 'The barcode was read. No library loan has been made.',
+    buttons: [['end', 'Finish']]
+  };
+  if (state.screen === 'staff') return {
+    title: 'Staff details', detail: 'Last event: no barcode read. Consecutive missed scans: ' + state.misses +
+      '. No loan recorded. Check the label and scanner at the desk.',
+    buttons: [['back', 'Back to student screen'], ['end', 'End session']]
+  };
+  const helpFirst = state.misses >= 2;
+  const retry = ['scan', 'Try again'];
+  const staff = ['staff', 'Show staff details'];
+  return {
+    title: helpFirst ? 'Staff can help with this book' : 'Barcode not read',
+    detail: helpFirst
+      ? 'The last ' + state.misses + ' scans were unsuccessful. Show these details at the library desk, or try again.'
+      : 'The book has not been recorded. Flatten the page and place the library barcode under the scanner.',
+    buttons: [...(helpFirst ? [staff, retry] : [retry, staff]), ['end', 'End session']]
+  };
+}
+
+const select = document.getElementById('scenario');
+const status = document.getElementById('message');
+const title = document.getElementById('screen-title');
+const buttons = document.getElementById('actions');
+let current = startSession(select.value);
+
+function render() {
+  const view = display(current);
+  title.textContent = view.title;
+  status.textContent = view.detail;
+  buttons.replaceChildren();
+  for (const [action, label] of view.buttons) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      current = update(current, action);
+      render();
+      title.focus();
+    });
+    buttons.appendChild(button);
+  }
+}
+
+select.addEventListener('change', () => {
+  current = startSession(select.value);
+  render();
+  title.focus();
+});
+render();
+</script></body></html>
